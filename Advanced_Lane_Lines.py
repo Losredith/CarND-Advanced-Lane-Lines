@@ -61,7 +61,7 @@ def region_of_interest(img, vertices):
 
 def draw_curve(img, left_fit,right_fit,IM):
 
-    #defining a blank mask to start with
+
     left = []
     right = []
     line = []
@@ -70,6 +70,7 @@ def draw_curve(img, left_fit,right_fit,IM):
     ploty = np.linspace(0, img.shape[0]-1, img.shape[0] )
     left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
     right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+    left_radius,right_radius = cal_radius(left_fit,right_fit)
     #print(ploty)
     for y in range(img.shape[0]):
         line.append([left_fitx[y],y])
@@ -77,14 +78,16 @@ def draw_curve(img, left_fit,right_fit,IM):
         left.append([left_fitx[y],y])
         right.append([right_fitx[y],y])
 #    line = left + right 
-
     #filling pixels inside the polygon defined by "vertices" with the fill color    
     if IM is not None:
         masked_image = cv2.fillPoly(base, np.int32([line]), (255,0,0))
         masked_image = cv2.warpPerspective(masked_image, IM, img_size)
+        
     else:
         masked_image = cv2.polylines(base, np.int32([left]),False,(255,0,0),5)
         masked_image = cv2.polylines(base, np.int32([right]),False,(255,0,0),5)
+    cv2.putText(masked_image, "Left :"+np.str(np.int(left_radius)), (640,200),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
+    cv2.putText(masked_image, "Right:"+np.str(np.int(right_radius)), (640,260),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
     final_img = cv2.addWeighted(masked_image, 0.5, img, 0.5, 0.)
     #final_img = cv2.addWeighted(masked_image, 0.5, img, 0.5, 0.)
     return final_img
@@ -173,14 +176,14 @@ def line_finding(img):
     right_laney = []
     offset = 200
     #print(img.shape[1])
-    histogram = np.sum(img[int(img.shape[0]/2):,offset:img.shape[1]-100], axis=0)
+    histogram = np.sum(img[:int(img.shape[0]/2),offset:img.shape[1]-100], axis=0)
     midpoint = np.int(histogram.shape[0]/2)
-#    leftx_base = np.argmax(histogram[:midpoint])
-#    rightx_base = np.argmax(histogram[midpoint:])
+    leftx_base = np.argmax(histogram[:midpoint])
+    rightx_base = np.argmax(histogram[midpoint:])
 #    print(leftx_base)
 #    print(rightx_base)
-    leftx_base = np.int(histogram.shape[0]*0.1)
-    rightx_base = histogram.shape[0] *0.8 - midpoint
+#    leftx_base = np.int(histogram.shape[0]*0.1)
+#    rightx_base = histogram.shape[0] *0.8 - midpoint
 #    print(leftx_base)
 #    print(rightx_base)
     
@@ -188,21 +191,23 @@ def line_finding(img):
 
     for i in range(img.shape[0]):
         histogram = np.sum(img[i:i+10,offset:img.shape[1]-100], axis=0)
-        #midpoint = np.int(histogram.shape[0]/2)
+        midpoint = np.int(histogram.shape[0]/2)
         left = histogram[:midpoint]
         right = histogram[midpoint:]
         if(np.amax(left)>9):
             thresh_left=np.where(left > 9)
-            if (thresh_left[0][0] > (leftx_base-150)) and (thresh_left[0][-1] < (leftx_base+150)):
-                leftx=(thresh_left[0][0]+thresh_left[0][-1])/2+offset
+            if (thresh_left[0][0] > (leftx_base-100)) and (thresh_left[0][-1] < (leftx_base+100)):
+                leftx=np.mean(thresh_left[0])+offset
                 left_lanex.append(leftx)
                 left_laney.append(i)
+                leftx_base = leftx - offset
         if(np.amax(right)>9):
             thresh_right=np.where(right > 9)
-            if (thresh_right[0][0] > (rightx_base-150)) and (thresh_right[0][-1] < (rightx_base+150)):
-                rightx=(thresh_right[0][0]+thresh_right[0][-1])/2+midpoint+offset
+            if (thresh_right[0][0] > (rightx_base-100)) and (thresh_right[0][-1] < (rightx_base+100)):
+                rightx=np.mean(thresh_right[0])+midpoint+offset
                 right_lanex.append(rightx)
                 right_laney.append(i)
+                rightx_base = rightx - midpoint - offset
     left_fit = np.polyfit(left_laney, left_lanex, 2)
     right_fit = np.polyfit(right_laney, right_lanex, 2)
     
@@ -210,11 +215,11 @@ def line_finding(img):
 #    left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
 #    right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
 
-#    plt.imshow(img)
-#    plt.plot(left_lanex, left_laney, color='red')
-#    plt.plot(right_lanex, right_laney, color='red')
-#    plt.xlim(0, 1280)
-#    plt.ylim(720, 0)
+    plt.imshow(img)
+    plt.plot(left_lanex, left_laney, color='red')
+    plt.plot(right_lanex, right_laney, color='red')
+    plt.xlim(0, 1280)
+    plt.ylim(720, 0)
 
     return left_fit,right_fit
 
@@ -222,7 +227,7 @@ def cal_radius(left_fit,right_fit):
     y_eval = 720
     left_curverad = ((1 + (2*left_fit[0]*y_eval + left_fit[1])**2)**1.5) / np.absolute(2*left_fit[0])
     right_curverad = ((1 + (2*right_fit[0]*y_eval + right_fit[1])**2)**1.5) / np.absolute(2*right_fit[0])
-    print(left_curverad, right_curverad)
+#    print(left_curverad, right_curverad)
     return left_curverad, right_curverad
     
 def process_frame(image):
@@ -230,6 +235,7 @@ def process_frame(image):
     warp_result,src,dst,M_Inverse = corners_unwarp(cal_result,mtx,dist)
     can_result = canny(warp_result)
     left,right = line_finding(can_result)
+    
     line = draw_curve(image, left,right,M_Inverse)
     return line
 
@@ -250,7 +256,7 @@ def process_image(image,mtx,dist):
     line1 = draw_curve(warp_result, left,right,None)
     line2 = draw_curve(cov_image, left,right,M_Inverse)
     # Plot the result
-    f, (ax1, ax2, ax3,ax4,ax5,ax6,ax7,ax8) = plt.subplots(8, 1, figsize=(70, 25))
+    f, (ax1, ax2, ax3,ax4,ax5,ax6,ax7,ax8) = plt.subplots(8, 1, figsize=(100, 40))
     f.tight_layout()
     
     ax1.imshow(cov_image)
@@ -281,10 +287,10 @@ def process_image(image,mtx,dist):
     
 
 cal_image = mpimg.imread('camera_cal/calibration2.jpg')
-cov_image = mpimg.imread('test_images/test1.jpg')
+cov_image = mpimg.imread('test_images/test12.jpg')
 mtx,dist = cal_cam(cal_image)
-process_image(cov_image,mtx,dist)
-#process_video(mtx,dist)
+#process_image(cov_image,mtx,dist)
+process_video(mtx,dist)
 
 
 
