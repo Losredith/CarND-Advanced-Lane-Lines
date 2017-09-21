@@ -43,11 +43,11 @@ class Line():
         #polynomial coefficients for the most recent fit
         self.current_fit = [np.array([False])]  
         
-        #radius of curvature of the line in some units
-        self.radius_of_curvature = None 
-        
-        #distance in meters of vehicle center from the line
-        self.line_base_pos = None 
+#        #radius of curvature of the line in some units
+#        self.radius_of_curvature = None 
+#        
+#        #distance in meters of vehicle center from the line
+#        self.line_base_pos = None 
         
 #        #difference in fit coefficients between last and new fits
 #        self.diffs = np.array([0,0,0], dtype='float') 
@@ -78,13 +78,13 @@ def draw_curve(img, left_fit,right_fit,IM):
     left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
     right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
     left_radius,right_radius = cal_radius(left_fit,right_fit)
-    #print(ploty)
+    offset = np.abs((640 -left_fitx[-1])*3/(right_fitx[-1] - left_fitx[-1])-1.5)
+
     for y in range(img.shape[0]):
         line.append([left_fitx[y],y])
         line.append([right_fitx[y],y])
         left.append([left_fitx[y],y])
         right.append([right_fitx[y],y])
-#    line = left + right 
     #filling pixels inside the polygon defined by "vertices" with the fill color    
     if IM is not None:
         masked_image = cv2.fillPoly(base, np.int32([line]), (255,0,0))
@@ -93,10 +93,10 @@ def draw_curve(img, left_fit,right_fit,IM):
     else:
         masked_image = cv2.polylines(base, np.int32([left]),False,(255,0,0),5)
         masked_image = cv2.polylines(base, np.int32([right]),False,(255,0,0),5)
-    cv2.putText(masked_image, "Left :"+np.str(np.int(left_radius)), (640,200),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
-    cv2.putText(masked_image, "Right:"+np.str(np.int(right_radius)), (640,260),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
-    final_img = cv2.addWeighted(masked_image, 0.5, img, 0.5, 0.)
-    #final_img = cv2.addWeighted(masked_image, 0.5, img, 0.5, 0.)
+    cv2.putText(masked_image, "Left :"+np.str(np.int(left_radius))+"m", (320,200),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
+    cv2.putText(masked_image, "Right:"+np.str(np.int(right_radius))+"m", (320,260),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
+    cv2.putText(masked_image, np.str(round(offset,2))+"m from the center", (320,320),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
+    final_img = cv2.addWeighted(masked_image, 0.3, img, 0.7, 0.)
     return final_img
 
 def cal_cam(cal_img):
@@ -117,7 +117,6 @@ def cal_cam(cal_img):
     
 def canny(img):
     # Convert to HLS color space and separate the S channel
-    # Note: img is the undistorted image
     hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
     s_channel = hls[:,:,2]
     
@@ -147,8 +146,7 @@ def canny(img):
     #plt.imshow(s_binary)
     return combined_binary
 
-# Define a function that takes an image, number of x and y points, 
-# camera matrix and distortion coefficients
+
 def corners_unwarp(img, mtx, dist):
     # Use the OpenCV undistort() function to remove distortion
     undist = cv2.undistort(img, mtx, dist, None, mtx)
@@ -171,7 +169,6 @@ def corners_unwarp(img, mtx, dist):
     # Warp the image using OpenCV warpPerspective()
     warped = cv2.warpPerspective(undist, M, img_size)
     
-
     # Return the resulting image and matrix
     return warped,src,dst,M_Inverse
 
@@ -182,17 +179,10 @@ def line_finding(img):
     right_lanex = []
     right_laney = []
     offset = 200
-    #print(img.shape[1])
     histogram = np.sum(img[:int(img.shape[0]/2),offset:img.shape[1]-100], axis=0)
     midpoint = np.int(histogram.shape[0]/2)
     leftx_base = np.argmax(histogram[:midpoint])
     rightx_base = np.argmax(histogram[midpoint:])
-#    print(leftx_base)
-#    print(rightx_base)
-#    leftx_base = np.int(histogram.shape[0]*0.1)
-#    rightx_base = histogram.shape[0] *0.8 - midpoint
-#    print(leftx_base)
-#    print(rightx_base)
     
 #    plt.plot(histogram)
 
@@ -253,23 +243,31 @@ def line_verification(leftfit,rightfit,leftx,rightx):
     if rightline.current_fit is None:
         rightline.current_fit = rightfit
         
-    leftlinediff = np.abs(np.mean(leftline.best_fit-leftfit))
-    rightlinediff = np.abs(np.mean(rightline.best_fit-rightfit))
+    leftlinebest = leftline.best_fit[0]*100000+leftline.best_fit[1]*10+leftline.best_fit[2]/100
+    leftlinecurrent = leftfit[0]*100000+leftfit[1]*10+leftfit[2]/100
+    leftlinediff = np.abs(leftlinebest-leftlinecurrent)
+    rightlinebest = rightline.best_fit[0]*100000+rightline.best_fit[1]*10+rightline.best_fit[2]/100
+    rightlinecurrent = rightfit[0]*100000+rightfit[1]*10+rightfit[2]/100
+    leftlinediff = np.abs(leftlinebest-leftlinecurrent)
+    rightlinediff = np.abs(rightlinebest-rightlinecurrent)
     leftxdiff = np.abs((leftline.bestx - np.mean(leftx)))
     rightxdiff = np.abs((rightline.bestx - np.mean(rightx)))
-    print(" ")
-    print(np.abs(leftline.best_fit[0]-leftfit[0]))
-    print(np.abs(rightline.best_fit[0]-rightfit[0]))
+    
+    lefterror.append(leftlinediff)
+    righterror.append(rightlinediff)
+#    print(" ")
+#    print(leftlinediff)
+#    print(rightlinediff)
 #    print(leftxdiff)
 #    print(rightxdiff)
     
-    if leftlinediff < 200 and leftxdiff < 100:
+    if leftlinediff < 120 and leftxdiff < 100:
         leftline.best_fit = (leftline.best_fit + leftfit)/2.0
         leftline.bestx = (leftline.bestx +np.mean(leftx))/2.0
         if  leftlinediff < 10 and leftxdiff < 10:
             leftline.current_fit = leftfit
     
-    if rightlinediff < 200 and rightxdiff < 100:
+    if rightlinediff < 120 and rightxdiff < 100:
         rightline.best_fit = (rightline.best_fit + rightfit)/2.0
         rightline.bestx = (rightline.bestx +np.mean(rightx))/2.0
         if rightlinediff < 10 and rightxdiff < 10:
@@ -293,6 +291,10 @@ def process_video(mtx,dist):
     clip.write_videofile(output, audio=False)
     clip.reader.close()
     clip.audio.reader.close_proc()
+    plt.plot(lefterror, color='red')
+    plt.plot(righterror, color='blue')
+    plt.savefig('output_images/error.png')
+
     
 def process_image(image,mtx,dist):
     cal_result = cv2.undistort(image, mtx, dist, None, mtx)
@@ -332,9 +334,12 @@ def process_image(image,mtx,dist):
     ax8.imshow(line2)
     ax8.set_title('Line Result', fontsize=12)
     
+    f.savefig('output_images/full_figure.png')
     #plt.subplots_adjust(left=0., right=1., top=2., bottom=1.5)
-    
 
+    
+righterror = []
+lefterror = []
 cal_image = mpimg.imread('camera_cal/calibration2.jpg')
 cov_image = mpimg.imread('test_images/test11.jpg')
 leftline = Line()
@@ -342,6 +347,7 @@ rightline = Line()
 mtx,dist = cal_cam(cal_image)
 #process_image(cov_image,mtx,dist)
 process_video(mtx,dist)
+
 
 
 
