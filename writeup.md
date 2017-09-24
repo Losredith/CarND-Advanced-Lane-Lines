@@ -23,6 +23,7 @@ The goals / steps of this project are the following:
 [image6]: ./output_images/figure6.png "Canny Result"
 [image7]: ./output_images/figure7.png "Line Unwarp Result"
 [image8]: ./output_images/figure8.png "Line Result"
+[image9]: ./output_images/figure9.png "Cal Result"
 [video1]: ./output_videos/output.mp4 "Video"
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/571/view) Points
@@ -39,8 +40,8 @@ The code for this step is contained in lines 102 through 116 of the file called 
 
 I start by preparing "object points", which will be the (x, y, z) coordinates of the chessboard corners in the world. Here I am assuming the chessboard is fixed on the (x, y) plane at z=0, such that the object points are the same for each calibration image.  Thus, `objp` is just a replicated array of coordinates, and `objpoints` will be appended with a copy of it every time I successfully detect all chessboard corners in a test image.  `imgpoints` will be appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.  
 
-I then used the output `objpoints` and `imgpoints` to compute the camera calibration and distortion coefficients using the `cv2.calibrateCamera()` function.  I applied this distortion correction to the test image using the `cv2.undistort()` function, but I didn't save the result, it will also be shown on Pipline results.
-
+I then used the output `objpoints` and `imgpoints` to compute the camera calibration and distortion coefficients using the `cv2.calibrateCamera()` function.  I applied this distortion correction to the test image using the `cv2.undistort()` function, The result is as follows:
+![alt text][image9]
 
 ### Pipeline (single images)
 
@@ -117,7 +118,9 @@ Here's a [link to my video result](./project_video.mp4)
 
 #### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
-1.The first problem is the method to find the lanes, I didn't use the method in the tutorial which I cann't understand totally. My method code as follows:  
+#####1.The first problem is the method to find the lanes.  
+I didn't use the method in the tutorial which I cann't understand totally. My method code as follows:  
+
 ```python
     histogram = np.sum(img[:int(img.shape[0]/2),offset:img.shape[1]-100], axis=0)
     midpoint = np.int(histogram.shape[0]/2)
@@ -147,11 +150,12 @@ Here's a [link to my video result](./project_video.mp4)
 ```
 The main idea is to find the boundary of nozero which probably be lanes boundary, it use 10 pixes as a unit.  
 I reduced the searching area to avoid distrub.  
-2.The second problem is to make my pipeline more robust.  
-I did it by 3 parts:  
+#####2.The second issue is to make my pipeline more robust.  
+I tried it by 3 parts:  
 1) In the finding lane function as shown above, I add some offset and threshold to append to the lane array.  
 2) I try to reduce the noise by adjust the threshold of x gradient and color channel, but it only can reduce some part of the noises.  
-3) I add a line_verification function as below:
+3) I add a line_verification function as below:  
+
 ```python
 def line_verification(leftfit,rightfit,leftx,rightx):
     if leftline.best_fit is None:
@@ -191,3 +195,8 @@ def line_verification(leftfit,rightfit,leftx,rightx):
     return leftline.current_fit,rightline.current_fit
 ```
 The main idea is adding threshold of polynomial coefficients by learning exsiting lanes.And it works very well.
+
+#####3.Issues still to be soloved
+At the end, my pipeline gets more robust, but it still gets a lot of errors when shadows and lights presences. In project video, it fails in serval frames which you can find it doesn't follow the lane line when shadow presences, and in the challenge video, its performance gets really poor.  
+And still, my curve radius gets some number more than 3m meters which is not possible, I add a threshold and still finding out the reason.  
+Next step I will try better image process techies when can separate useful data more accurately such as LUV channel, I think more line verification threshold tricks won't help anymore.

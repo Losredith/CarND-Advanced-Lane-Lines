@@ -40,22 +40,25 @@ class Line():
         #polynomial coefficients averaged over the last n iterations
         self.best_fit = None  
         
-        #polynomial coefficients for the most recent fit
+        #polynomial coefficients for the most recent fit before
+        self.measured_fit = []
+        
+        #polynomial coefficients for the most recent fit after
         self.current_fit = [np.array([False])]  
         
-#        #radius of curvature of the line in some units
-#        self.radius_of_curvature = None 
-#        
-#        #distance in meters of vehicle center from the line
-#        self.line_base_pos = None 
+        #radius of curvature of the line in some units
+        self.radius_of_curvature = None 
+        
+        #distance in meters of vehicle center from the line
+        self.line_base_pos = None 
         
 #        #difference in fit coefficients between last and new fits
 #        self.diffs = np.array([0,0,0], dtype='float') 
         
         #x values for detected line pixels
-#        self.allx = None  
+        self.allx = []  
         #y values for detected line pixels
-#        self.ally = None
+        self.ally = []
 
 def region_of_interest(img, vertices):
 
@@ -67,7 +70,7 @@ def region_of_interest(img, vertices):
     final_img = cv2.addWeighted(masked_image, 0.5, img, 0.5, 0.)
     return final_img
 
-def draw_curve(img, left_fit,right_fit,IM):
+def draw_curve(img,IM):
 
     left = []
     right = []
@@ -75,10 +78,9 @@ def draw_curve(img, left_fit,right_fit,IM):
     base = np.zeros_like(img)   
     img_size = (img.shape[1], img.shape[0])
     ploty = np.linspace(0, img.shape[0]-1, img.shape[0] )
-    left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-    right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-    left_radius,right_radius = cal_radius(left_fit,right_fit)
-    offset = np.abs((640 -left_fitx[-1])*3/(right_fitx[-1] - left_fitx[-1])-1.5)
+    left_fitx = leftline.current_fit[0]*ploty**2 + leftline.current_fit[1]*ploty + leftline.current_fit[2]
+    right_fitx = rightline.current_fit[0]*ploty**2 + rightline.current_fit[1]*ploty + rightline.current_fit[2]
+    
 
     for y in range(img.shape[0]):
         line.append([left_fitx[y],y])
@@ -93,9 +95,15 @@ def draw_curve(img, left_fit,right_fit,IM):
     else:
         masked_image = cv2.polylines(base, np.int32([left]),False,(255,0,0),5)
         masked_image = cv2.polylines(base, np.int32([right]),False,(255,0,0),5)
-    cv2.putText(masked_image, "Left :"+np.str(np.int(left_radius))+"m", (320,200),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
-    cv2.putText(masked_image, "Right:"+np.str(np.int(right_radius))+"m", (320,260),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
-    cv2.putText(masked_image, np.str(round(offset,2))+"m from the center", (320,320),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
+    cv2.putText(masked_image, "Left :"+np.str(np.int(leftline.radius_of_curvature))+"m", (320,200),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
+    cv2.putText(masked_image, "Right:"+np.str(np.int(rightline.radius_of_curvature))+"m", (320,260),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
+    leftline.line_base_pos = (640 -left_fitx[-1])*3.7/(right_fitx[-1] - left_fitx[-1])
+    leftline.line_base_pos = 3.7 -  leftline.line_base_pos
+    offset = leftline.line_base_pos-1.85
+    if offset < 0:
+        cv2.putText(masked_image, np.str(round(-offset,2))+"m left of center", (320,320),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
+    else:
+        cv2.putText(masked_image, np.str(round(offset,2))+"m right of center", (320,320),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
     final_img = cv2.addWeighted(masked_image, 0.3, img, 0.7, 0.)
     return final_img
 
@@ -130,7 +138,7 @@ def canny(img):
     
     # Threshold x gradient
     thresh_min = 20
-    thresh_max = 100
+    thresh_max = 120
     sxbinary = np.zeros_like(scaled_sobel)
     sxbinary[(scaled_sobel >= thresh_min) & (scaled_sobel <= thresh_max)] = 1
     
@@ -148,8 +156,6 @@ def canny(img):
 
 
 def corners_unwarp(img, mtx, dist):
-    # Use the OpenCV undistort() function to remove distortion
-    undist = cv2.undistort(img, mtx, dist, None, mtx)
 
     # Grab the image shape
     img_size = (img.shape[1], img.shape[0])
@@ -167,17 +173,14 @@ def corners_unwarp(img, mtx, dist):
     M = cv2.getPerspectiveTransform(src, dst)
     M_Inverse = cv2.getPerspectiveTransform(dst, src)
     # Warp the image using OpenCV warpPerspective()
-    warped = cv2.warpPerspective(undist, M, img_size)
+    warped = cv2.warpPerspective(img, M, img_size)
     
     # Return the resulting image and matrix
     return warped,src,dst,M_Inverse
 
 def line_finding(img):
 
-    left_lanex = []
-    left_laney = []
-    right_lanex = []
-    right_laney = []
+
     offset = 200
     histogram = np.sum(img[:int(img.shape[0]/2),offset:img.shape[1]-100], axis=0)
     midpoint = np.int(histogram.shape[0]/2)
@@ -185,7 +188,11 @@ def line_finding(img):
     rightx_base = np.argmax(histogram[midpoint:])
     
 #    plt.plot(histogram)
-
+    leftline.allx = []
+    leftline.ally = []
+    rightline.allx = []
+    rightline.ally = []
+    
     for i in range(img.shape[0]):
         histogram = np.sum(img[i:i+10,offset:img.shape[1]-100], axis=0)
         midpoint = np.int(histogram.shape[0]/2)
@@ -194,19 +201,22 @@ def line_finding(img):
         if(np.amax(left)>9):
             thresh_left=np.where(left > 9)
             if (thresh_left[0][0] > (leftx_base-100)) and (thresh_left[0][-1] < (leftx_base+100)):
-                leftx=np.mean(thresh_left[0])+offset
-                left_lanex.append(leftx)
-                left_laney.append(i)
+                leftx=np.mean(thresh_left[0]) + offset
+                leftline.allx.append(leftx)
+                leftline.ally.append(i)
                 leftx_base = leftx - offset
         if(np.amax(right)>9):
             thresh_right=np.where(right > 9)
             if (thresh_right[0][0] > (rightx_base-100)) and (thresh_right[0][-1] < (rightx_base+100)):
-                rightx=np.mean(thresh_right[0])+midpoint+offset
-                right_lanex.append(rightx)
-                right_laney.append(i)
+                rightx=np.mean(thresh_right[0]) + midpoint + offset
+                rightline.allx.append(rightx)
+                rightline.ally.append(i)
                 rightx_base = rightx - midpoint - offset
-    left_fit = np.polyfit(left_laney, left_lanex, 2)
-    right_fit = np.polyfit(right_laney, right_lanex, 2)
+    if (len(leftline.allx)>0 and len(rightline.allx)>0):
+        leftline.measured_fit = np.polyfit(leftline.ally, leftline.allx, 2)
+        rightline.measured_fit = np.polyfit(rightline.ally, rightline.allx, 2)    
+    else:
+        print("error")
     
 #    ploty = np.linspace(0, img.shape[0]-1, img.shape[0] )
 #    left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
@@ -218,70 +228,92 @@ def line_finding(img):
 #    plt.xlim(0, 1280)
 #    plt.ylim(720, 0)
 
-    return left_fit,right_fit,left_lanex,right_lanex
+#    return leftline.measured_fit,rightline.measured_fit,leftline.allx,rightline.ally
 
-def cal_radius(left_fit,right_fit):
-    y_eval = 720
-    left_curverad = ((1 + (2*left_fit[0]*y_eval + left_fit[1])**2)**1.5) / np.absolute(2*left_fit[0])
-    right_curverad = ((1 + (2*right_fit[0]*y_eval + right_fit[1])**2)**1.5) / np.absolute(2*right_fit[0])
-#    print(left_curverad, right_curverad)
-    return left_curverad, right_curverad
+def cal_radius(fitx,fity):
 
-def line_verification(leftfit,rightfit,leftx,rightx):
+    y_eval = 720   
+    fit_cr = np.polyfit(np.asarray(fity) * ym_per_pix, np.asarray(fitx) * xm_per_pix, 2)
+    # Calculate the new radii of curvature
+    curverad = ((1 + (2*fit_cr[0]*y_eval*ym_per_pix + fit_cr[1])**2)**1.5)/np.absolute(2*fit_cr[0])
+    return curverad
+
+def line_verification():
 
     if leftline.best_fit is None:
-        leftline.best_fit = leftfit
+        leftline.best_fit = leftline.measured_fit
     if leftline.bestx is None:
-        leftline.bestx = np.mean(leftx)
+        leftline.bestx = np.mean(leftline.allx)
     if leftline.current_fit is None:
-        leftline.current_fit = leftfit
+        leftline.current_fit = leftline.measured_fit
         
     if rightline.best_fit is None:
-        rightline.best_fit = rightfit
+        rightline.best_fit = rightline.measured_fit
     if rightline.bestx is None:
-        rightline.bestx = np.mean(rightx)    
+        rightline.bestx = np.mean(rightline.allx)    
     if rightline.current_fit is None:
-        rightline.current_fit = rightfit
+        rightline.current_fit = rightline.measured_fit
         
     leftlinebest = leftline.best_fit[0]*100000+leftline.best_fit[1]*10+leftline.best_fit[2]/100
-    leftlinecurrent = leftfit[0]*100000+leftfit[1]*10+leftfit[2]/100
+    leftlinecurrent = leftline.measured_fit[0]*100000+leftline.measured_fit[1]*20+leftline.measured_fit[2]/100
     leftlinediff = np.abs(leftlinebest-leftlinecurrent)
+    
     rightlinebest = rightline.best_fit[0]*100000+rightline.best_fit[1]*10+rightline.best_fit[2]/100
-    rightlinecurrent = rightfit[0]*100000+rightfit[1]*10+rightfit[2]/100
+    rightlinecurrent = rightline.measured_fit[0]*100000+rightline.measured_fit[1]*10+rightline.measured_fit[2]/100
+    
     leftlinediff = np.abs(leftlinebest-leftlinecurrent)
     rightlinediff = np.abs(rightlinebest-rightlinecurrent)
-    leftxdiff = np.abs((leftline.bestx - np.mean(leftx)))
-    rightxdiff = np.abs((rightline.bestx - np.mean(rightx)))
+    if len(leftline.allx) > 0 and len(rightline.allx) > 0:
+        leftxdiff = np.abs((leftline.bestx - np.mean(leftline.allx)))
+        rightxdiff = np.abs((rightline.bestx - np.mean(rightline.allx)))
+    else:
+        leftxdiff = 0
+        rightxdiff = 0
     
-    lefterror.append(leftlinediff)
-    righterror.append(rightlinediff)
+    leftlineerror.append(leftlinediff)
+    rightlineerror.append(rightlinediff)
+    leftxerror.append(leftxdiff)
+    rightxerror.append(rightxdiff)
+    fit1.append(leftline.measured_fit[0]*10000)
+    fit2.append(leftline.best_fit[1]*10)
+    fit3.append(leftline.best_fit[2]/100)
 #    print(" ")
 #    print(leftlinediff)
 #    print(rightlinediff)
 #    print(leftxdiff)
 #    print(rightxdiff)
     
-    if leftlinediff < 120 and leftxdiff < 100:
-        leftline.best_fit = (leftline.best_fit + leftfit)/2.0
-        leftline.bestx = (leftline.bestx +np.mean(leftx))/2.0
-        if  leftlinediff < 10 and leftxdiff < 10:
-            leftline.current_fit = leftfit
-    
-    if rightlinediff < 120 and rightxdiff < 100:
-        rightline.best_fit = (rightline.best_fit + rightfit)/2.0
-        rightline.bestx = (rightline.bestx +np.mean(rightx))/2.0
-        if rightlinediff < 10 and rightxdiff < 10:
-            rightline.current_fit = rightfit
-        
-    return leftline.current_fit,rightline.current_fit
+    if leftlinediff < 50 and leftxdiff < 100:
+        leftline.best_fit = (leftline.best_fit*4 + leftline.measured_fit*6)/10.0
+        if len(leftline.allx) > 0:
+            leftline.bestx = (leftline.bestx +np.mean(leftline.allx))/2.0
+        if  leftlinediff < 5 and leftxdiff < 10:
+            leftline.current_fit = leftline.measured_fit
+            if  len(leftline.allx) > 0:
+                if cal_radius(leftline.allx,leftline.ally) < 1800:
+                    leftline.radius_of_curvature = cal_radius(leftline.allx,leftline.ally)
+    #leftline.current_fit = leftline.measured_fit
+    if rightlinediff < 50 and rightxdiff < 100:
+        rightline.best_fit = (rightline.best_fit*4 + rightline.measured_fit*6)/10.0
+        if len(rightline.allx) > 0:
+            rightline.bestx = (rightline.bestx +np.mean(rightline.allx))/2.0
+        if rightlinediff < 5 and rightxdiff < 10:
+            rightline.current_fit = rightline.measured_fit
+            if len(rightline.allx) > 0:
+                if cal_radius(rightline.allx,rightline.ally) < 1800:
+                    rightline.radius_of_curvature = cal_radius(rightline.allx,rightline.ally)
+#    if np.abs(leftline.radius_of_curvature - rightline.radius_of_curvature) > 500:
+#        leftline.radius_of_curvature = rightline.radius_of_curvature
+#    
+#    return leftline.current_fit,rightline.current_fit
     
 def process_frame(image):
     cal_result = cv2.undistort(image, mtx, dist, None, mtx)
     warp_result,src,dst,M_Inverse = corners_unwarp(cal_result,mtx,dist)
     can_result = canny(warp_result)
-    left,right,leftx,rightx = line_finding(can_result)
-    left,right = line_verification(left,right,leftx,rightx)
-    line = draw_curve(image, left,right,M_Inverse)
+    line_finding(can_result)
+    line_verification()
+    line = draw_curve(image,M_Inverse)
     return line
 
 def process_video(mtx,dist):
@@ -291,23 +323,29 @@ def process_video(mtx,dist):
     clip.write_videofile(output, audio=False)
     clip.reader.close()
     clip.audio.reader.close_proc()
-    plt.plot(lefterror, color='red')
-    plt.plot(righterror, color='blue')
+    plt.plot(leftlineerror, color='red')
+    plt.plot(leftxerror,color='green')
+#    plt.plot(rightxerror,color='black')
+#    plt.plot(rightlineerror, color='blue')
+#    plt.plot(fit1,color='green')
+#    plt.plot(fit2,color='red')
+#    plt.plot(fit3,color='blue')
     plt.savefig('output_images/error.png')
 
     
 def process_image(image,mtx,dist):
+    cal_example = cv2.undistort(cal_image, mtx, dist, None, mtx)
     cal_result = cv2.undistort(image, mtx, dist, None, mtx)
     warp_result,src,dst,M_Inverse = corners_unwarp(cal_result,mtx,dist)
     can_result = canny(warp_result)
-    left,right,leftx,rightx = line_finding(can_result)
-    
+    line_finding(can_result)
+    line_verification()
     rect1 = region_of_interest(cov_image,src)
     rect2 = region_of_interest(warp_result,dst)
-    line1 = draw_curve(warp_result, left,right,None)
-    line2 = draw_curve(cov_image, left,right,M_Inverse)
+    line1 = draw_curve(warp_result, None)
+    line2 = draw_curve(cov_image, M_Inverse)
     # Plot the result
-    f, (ax1, ax2, ax3,ax4,ax5,ax6,ax7,ax8) = plt.subplots(8, 1, figsize=(100, 40))
+    f, (ax1, ax2, ax3,ax4,ax5,ax6,ax7,ax8,ax9) = plt.subplots(9, 1, figsize=(120, 40))
     f.tight_layout()
     
     ax1.imshow(cov_image)
@@ -334,19 +372,29 @@ def process_image(image,mtx,dist):
     ax8.imshow(line2)
     ax8.set_title('Line Result', fontsize=12)
     
+    ax9.imshow(cal_example)
+    ax9.set_title('Undistort Example', fontsize=12)
+    
     f.savefig('output_images/full_figure.png')
     #plt.subplots_adjust(left=0., right=1., top=2., bottom=1.5)
 
-    
-righterror = []
-lefterror = []
+
+rightlineerror = []
+leftlineerror = []
+leftxerror= []
+rightxerror = []
+fit1 = []
+fit2 = []
+fit3 = []
+ym_per_pix = 30/720 # meters per pixel in y dimension
+xm_per_pix = 3.7/700 # meters per pixel in x dimension
 cal_image = mpimg.imread('camera_cal/calibration2.jpg')
-cov_image = mpimg.imread('test_images/test11.jpg')
+cov_image = mpimg.imread('test_images/test1.jpg')
 leftline = Line()
 rightline = Line()
 mtx,dist = cal_cam(cal_image)
-#process_image(cov_image,mtx,dist)
-process_video(mtx,dist)
+process_image(cov_image,mtx,dist)
+#process_video(mtx,dist)
 
 
 
