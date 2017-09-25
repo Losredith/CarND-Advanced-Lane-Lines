@@ -81,7 +81,6 @@ def draw_curve(img,IM):
     left_fitx = leftline.current_fit[0]*ploty**2 + leftline.current_fit[1]*ploty + leftline.current_fit[2]
     right_fitx = rightline.current_fit[0]*ploty**2 + rightline.current_fit[1]*ploty + rightline.current_fit[2]
     
-
     for y in range(img.shape[0]):
         line.append([left_fitx[y],y])
         line.append([right_fitx[y],y])
@@ -97,9 +96,9 @@ def draw_curve(img,IM):
         masked_image = cv2.polylines(base, np.int32([right]),False,(255,0,0),5)
     cv2.putText(masked_image, "Left :"+np.str(np.int(leftline.radius_of_curvature))+"m", (320,200),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
     cv2.putText(masked_image, "Right:"+np.str(np.int(rightline.radius_of_curvature))+"m", (320,260),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
-    leftline.line_base_pos = (640 -left_fitx[-1])*3.7/(right_fitx[-1] - left_fitx[-1])
-    leftline.line_base_pos = 3.7 -  leftline.line_base_pos
-    offset = leftline.line_base_pos-1.85
+    leftline.line_base_pos = (640 - left_fitx[-1])*3.7/(right_fitx[-1] - left_fitx[-1])
+    leftline.line_base_pos = 3.7 - leftline.line_base_pos
+    offset = leftline.line_base_pos - 1.85
     if offset < 0:
         cv2.putText(masked_image, np.str(round(-offset,2))+"m left of center", (320,320),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0),3)
     else:
@@ -108,6 +107,7 @@ def draw_curve(img,IM):
     return final_img
 
 def cal_cam(cal_img):
+    
     imgpoints = []
     objpoints = []
     objp = np.zeros((nx*ny,3),np.float32)
@@ -179,8 +179,7 @@ def corners_unwarp(img, mtx, dist):
     return warped,src,dst,M_Inverse
 
 def line_finding(img):
-
-
+    
     offset = 200
     histogram = np.sum(img[:int(img.shape[0]/2),offset:img.shape[1]-100], axis=0)
     midpoint = np.int(histogram.shape[0]/2)
@@ -227,12 +226,8 @@ def line_finding(img):
 #    plt.plot(right_lanex, right_laney, color='red')
 #    plt.xlim(0, 1280)
 #    plt.ylim(720, 0)
-
-#    return leftline.measured_fit,rightline.measured_fit,leftline.allx,rightline.ally
-
 def cal_radius(fitx,fity):
-
-    y_eval = 720   
+    y_eval = np.max(fity)   
     fit_cr = np.polyfit(np.asarray(fity) * ym_per_pix, np.asarray(fitx) * xm_per_pix, 2)
     # Calculate the new radii of curvature
     curverad = ((1 + (2*fit_cr[0]*y_eval*ym_per_pix + fit_cr[1])**2)**1.5)/np.absolute(2*fit_cr[0])
@@ -274,9 +269,7 @@ def line_verification():
     rightlineerror.append(rightlinediff)
     leftxerror.append(leftxdiff)
     rightxerror.append(rightxdiff)
-    fit1.append(leftline.measured_fit[0]*10000)
-    fit2.append(leftline.best_fit[1]*10)
-    fit3.append(leftline.best_fit[2]/100)
+
 #    print(" ")
 #    print(leftlinediff)
 #    print(rightlinediff)
@@ -289,10 +282,9 @@ def line_verification():
             leftline.bestx = (leftline.bestx +np.mean(leftline.allx))/2.0
         if  leftlinediff < 5 and leftxdiff < 10:
             leftline.current_fit = leftline.measured_fit
-            if  len(leftline.allx) > 0:
-                if cal_radius(leftline.allx,leftline.ally) < 1800:
-                    leftline.radius_of_curvature = cal_radius(leftline.allx,leftline.ally)
-    #leftline.current_fit = leftline.measured_fit
+            if len(leftline.allx) > 0:
+                leftline.radius_of_curvature = cal_radius(leftline.allx,leftline.ally)
+
     if rightlinediff < 50 and rightxdiff < 100:
         rightline.best_fit = (rightline.best_fit*4 + rightline.measured_fit*6)/10.0
         if len(rightline.allx) > 0:
@@ -300,12 +292,8 @@ def line_verification():
         if rightlinediff < 5 and rightxdiff < 10:
             rightline.current_fit = rightline.measured_fit
             if len(rightline.allx) > 0:
-                if cal_radius(rightline.allx,rightline.ally) < 1800:
-                    rightline.radius_of_curvature = cal_radius(rightline.allx,rightline.ally)
-#    if np.abs(leftline.radius_of_curvature - rightline.radius_of_curvature) > 500:
-#        leftline.radius_of_curvature = rightline.radius_of_curvature
-#    
-#    return leftline.current_fit,rightline.current_fit
+                rightline.radius_of_curvature = cal_radius(rightline.allx,rightline.ally)
+
     
 def process_frame(image):
     cal_result = cv2.undistort(image, mtx, dist, None, mtx)
@@ -313,7 +301,7 @@ def process_frame(image):
     can_result = canny(warp_result)
     line_finding(can_result)
     line_verification()
-    line = draw_curve(image,M_Inverse)
+    line = draw_curve(cal_result,M_Inverse)
     return line
 
 def process_video(mtx,dist):
@@ -323,13 +311,10 @@ def process_video(mtx,dist):
     clip.write_videofile(output, audio=False)
     clip.reader.close()
     clip.audio.reader.close_proc()
-    plt.plot(leftlineerror, color='red')
-    plt.plot(leftxerror,color='green')
+#    plt.plot(leftlineerror, color='red')
+#    plt.plot(leftxerror,color='green')
 #    plt.plot(rightxerror,color='black')
 #    plt.plot(rightlineerror, color='blue')
-#    plt.plot(fit1,color='green')
-#    plt.plot(fit2,color='red')
-#    plt.plot(fit3,color='blue')
     plt.savefig('output_images/error.png')
 
     
@@ -340,10 +325,10 @@ def process_image(image,mtx,dist):
     can_result = canny(warp_result)
     line_finding(can_result)
     line_verification()
-    rect1 = region_of_interest(cov_image,src)
+    rect1 = region_of_interest(cal_result,src)
     rect2 = region_of_interest(warp_result,dst)
     line1 = draw_curve(warp_result, None)
-    line2 = draw_curve(cov_image, M_Inverse)
+    line2 = draw_curve(cal_result, M_Inverse)
     # Plot the result
     f, (ax1, ax2, ax3,ax4,ax5,ax6,ax7,ax8,ax9) = plt.subplots(9, 1, figsize=(120, 40))
     f.tight_layout()
@@ -378,14 +363,10 @@ def process_image(image,mtx,dist):
     f.savefig('output_images/full_figure.png')
     #plt.subplots_adjust(left=0., right=1., top=2., bottom=1.5)
 
-
 rightlineerror = []
 leftlineerror = []
 leftxerror= []
 rightxerror = []
-fit1 = []
-fit2 = []
-fit3 = []
 ym_per_pix = 30/720 # meters per pixel in y dimension
 xm_per_pix = 3.7/700 # meters per pixel in x dimension
 cal_image = mpimg.imread('camera_cal/calibration2.jpg')
@@ -393,8 +374,8 @@ cov_image = mpimg.imread('test_images/test1.jpg')
 leftline = Line()
 rightline = Line()
 mtx,dist = cal_cam(cal_image)
-process_image(cov_image,mtx,dist)
-#process_video(mtx,dist)
+#process_image(cov_image,mtx,dist)
+process_video(mtx,dist)
 
 
 
